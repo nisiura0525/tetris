@@ -1,0 +1,697 @@
+#define _SAMPLE2
+#ifdef _EX
+#include"libOne.h"
+const int INIT = 0;
+const int PLAY = 1;
+const int OVER = 2;
+int Gamestate = INIT;
+float Size = 30;
+const int ROWS = 20;
+const int COLS = 12;
+//彩度、明るさ、透明度＝サチュレーション、ヴァリュー、アルファ値
+float Satu = 255;
+float Value = 255;
+float Alpha = 255;
+int FallFlag = 0;
+int Score = 0;
+struct COLOR Color[9] = {
+    //ブロックの色
+    COLOR(0,Satu,Value,Alpha),//レッド
+    COLOR(30,Satu,Value,Alpha),//オレンジ
+    COLOR(60,Satu,Value,Alpha),//イエロー
+    COLOR(120,Satu,Value,Alpha),//グリーン
+    COLOR(180,Satu,Value,Alpha),//シアン
+    COLOR(240,Satu,Value,Alpha),//ブルー
+    COLOR(300,Satu,Value,Alpha),//マゼンタ
+    COLOR(200,44,88,Alpha),//壁
+    COLOR(0,0,20,Alpha)//背景
+};
+const int WALL = 7;
+const int BACK = 8;
+int Stage[ROWS][COLS];//行数から指定してその次に列数2次元配列　色の入れ物
+int X, Y, R;
+int Px[4], Py[4];//オフセット値の箱
+int PtnNo = 0;
+int Ptn[7][3][2] = {//ブロックパターンオフセット,種類とブロックの個数とｘ、ｙ
+    //■□■■...0
+    -1,0,   1,0,  2,0,
+    //■
+    //■□■....1
+    - 1,-1, -1,0,  1,0,
+    //  　■
+    //■□■....2
+    -1,0,   1,-1, 1,0,
+    //■□
+    //　■■....3
+    -1,0,   0,1,  1,1,
+    //　□■
+    //■■  ....4
+     1,0,   0,1, -1,1,
+    //　■
+    //■□■....5
+    -1,0,   0,-1, 1,0,
+    //□■
+    //■■......6
+     1,0,   0,1,  1,1,
+};
+int LoopCnt = 0;
+void init() {
+    for (int y = 0;y < ROWS;y++) {
+        Stage[y][0] = WALL;
+        Stage[y][COLS - 1] = WALL;
+        for (int x = 1;x < COLS-1;x++) {//1~10
+            Stage[y][x] = BACK;//20*12を背景に
+            if (y == ROWS - 1) {
+                Stage[y][x] = WALL;
+            }
+        }
+    }
+    Gamestate = PLAY;
+    X = 5;Y = 1;
+}
+void drowStage() {
+    colorMode(HSV);
+    angleMode(DEGREES);
+    for (int y = 0;y < ROWS;y++) {
+        for (int x = 0;x < COLS;x++) {
+            int no = Stage[y][x];
+            fill(Color[no]);//変数で呼び出すことも出来る
+            rect(Size * x, Size * y, Size, Size);
+        }
+    }
+}
+void setPosition() {//ブロックの場所をセットする
+    Px[0] = X;//5
+    Py[0] = Y;//1
+    int r = R % 4;//1から４回が上限の回転
+    for (int i = 0;i < 3;i++) {
+        int x = Ptn[PtnNo][i][0];
+        int y = Ptn[PtnNo][i][1];
+        for (int j = 0;j < r;j++) {
+            int w = x;
+            x = y;
+            y = -w;
+        }
+        Px[i + 1] = X + x;
+        Py[i + 1] = Y + y;
+    }
+}
+void setPtn() {//ブロックに色をセットする関数
+    setPosition();
+    for (int i = 0;i < 4;i++){
+        int x = Px[i];
+        int y = Py[i];
+        Stage[y][x] = PtnNo;
+    }
+}
+void delPtn() {//ブロックの色をリセットする関数
+    setPosition();
+    for (int i = 0;i < 4;i++) {
+        int x = Px[i];
+        int y = Py[i];
+        Stage[y][x] = BACK;
+    }
+}
+int collision() {//当たり判定の関数
+    setPosition();
+    int flag = 0;
+    for (int i = 0;i < 4;i++) {
+        int x = Px[i];
+        int y = Py[i];
+        if (Stage[y][x]!= BACK) {
+            flag = 1;
+        }
+    }
+    return flag;
+}
+void complete() {//一列にすべて配置されているか確認
+    for (int y = 1;y < ROWS-1;y++) {
+        int flag = 1;
+        for (int x = 1;x < COLS-1;x++) {
+            if (Stage[y][x] == BACK) {
+                flag = 0;
+            }
+        }
+        if (flag) {
+            for (int upy = y - 1;upy > 0;upy--) {
+                for (int x = 1;x < COLS - 1;x++) {
+                    Stage[upy+1][x] = Stage[upy][x];
+                }
+            }
+            Score += 10;
+        }
+    }
+}
+void play() {
+   // Stage[Y][X] = BACK;
+    delPtn();
+    int dy = 0, dx = 0, dr = 0;
+    if ((++LoopCnt %= 10) == 0) { dy = 1; }//値が10の時0になるので
+    if (isTrigger(KEY_D)) { dx = 1; }
+    if (isTrigger(KEY_A)) { dx = -1; }
+    if (isTrigger(KEY_W)) { dr = 1; }
+    if (isPress(KEY_S)) { FallFlag = 1; }
+    else {
+        FallFlag = 0;
+    }
+    if (FallFlag) { dy = 1; }
+    X += dx;
+    Y += dy;
+    R += dr;
+    if (collision()) {
+        //背景じゃなかったらで指定しているから他のブロックにあたっても止まる
+        Y -= dy;
+        X -= dx;
+        R -= dr;
+        if (dy == 1 && dx == 0 && dr == 0) {
+            //Stage[Y][X] = PtnNo;
+            setPtn();
+            complete();
+            //止まった場所の位置に色が残る
+            //新しいブロック
+
+            Y = 1;
+            X = 5;
+            R = 0;
+            PtnNo =random() % 7;
+            if (collision()) {
+                Gamestate = OVER;
+            }
+        }
+    }
+    //Stage[Y][X] = PtnNo;
+    setPtn();
+    clear(0);
+    drowStage();
+    fill(0, 0, 255);
+    textSize(Size);
+    text("スコア", Size * 2, Size);
+    text(Score, Size * 2, Size*2);
+}
+void over() {
+    clear(0);
+    drowStage();
+    fill(0, 0, 255);
+    textSize(Size);
+    text("詰んだ", Size * 2, Size);
+    if (isTrigger(KEY_SPACE)) {
+        Gamestate = INIT;
+    }
+}
+void gmain() {
+    window(Size * COLS, Size * ROWS);
+    while (notQuit) {
+
+        if (Gamestate == INIT)init();
+        else if (Gamestate == PLAY)play();
+        else if (Gamestate == OVER)over();
+    }
+
+}
+#endif
+
+
+
+#ifdef _SAMPLE2
+#include"libOne.h"
+//外部変数------------------------------------------------------------
+//シーケンス
+const int INIT = 0;
+const int PLAY = 1;
+const int OVER = 2;
+int GameState = INIT;
+//色データ
+float Satu = 200;
+float Value = 255;
+float Alpha = 255;
+struct COLOR Color[9] = {
+    COLOR(0,Satu,Value,Alpha),
+    COLOR(30,Satu,Value,Alpha),
+    COLOR(60,Satu,Value,Alpha),
+    COLOR(120,Satu,Value,Alpha),
+    COLOR(180,Satu,Value,Alpha),
+    COLOR(220,Satu,Value,Alpha),
+    COLOR(300,Satu,Value,Alpha),
+    COLOR(200,44,88,Alpha),
+    COLOR(0,0,20,Alpha),
+};
+//壁と背景の色番号
+const int WALL = 7;
+const int BACK = 8;
+//ステージ（色番号を記憶する）
+const int ROWS = 20;
+const int COLS = 12;
+int Stage[ROWS][COLS];
+float Size = 50;
+//スコア
+int Score = 0;
+//基準ブロック位置と回転数
+int X, Y, R;
+//ブロックパターンの位置
+int Px[4], Py[4];
+//ブロック移動制御
+int FallFlag = 0;
+int LoopCnt = 0;
+//ブロックパターン番号  ※ 兼色番号 ※
+int PtnNo;
+//ブロックパターンオフセット
+int PtnOffsets[7][3][2] = {
+    //■□■■...0
+    -1,0,   1,0,  2,0,
+    //■
+    //■□■....1
+    -1,-1, -1,0,  1,0,
+    //  　■
+    //■□■....2
+    -1,0,   1,-1, 1,0,
+    //■□
+    //　■■....3
+    -1,0,   0,1,  1,1,
+    //　□■
+    //■■  ....4
+     1,0,   0,1, -1,1,
+    //　■
+    //■□■....5
+    -1,0,   0,-1, 1,0,
+    //□■
+    //■■......6
+     1,0,   0,1,  1,1,
+};
+
+//関数----------------------------------------------------------------
+void setPtnPosition();
+
+void init() {
+    //壁と背景の色番号をStage2次元配列にセット
+    for (int y = 0; y < ROWS; y++) {
+        Stage[y][0] = Stage[y][COLS - 1] = WALL;
+        for (int x = 1; x < COLS-1; x++) {
+            Stage[y][x] = BACK;
+            if (y == ROWS - 1) {
+                Stage[y][x] = WALL;
+            }
+        }
+    }
+    //ブロック初期値
+    X = 5;
+    Y = 1;
+    R = 0;
+    Score = 0;
+    PtnNo = random() % 7;
+    setPtnPosition();
+    //次のシーケンス
+    GameState = PLAY;
+}
+
+void drawStage() {
+   
+    angleMode(DEGREES);
+    colorMode(HSV);
+    strokeWeight(20);
+    rectMode(CENTER);
+    for (int y = 0; y < ROWS; y++) {
+        for (int x = 0; x < COLS; x++) {
+            int no = Stage[y][x];
+            stroke(Color[no]);
+            fill(0, 0, 100);
+            rect(Size/2+Size * x, Size/2+Size * y, Size/2, Size/2);
+        }
+    }
+}
+void setPtnPosition() {
+    //基準ブロック位置
+    Px[0] = X;
+    Py[0] = Y;
+    //回転数
+    int r = R % 4;
+    for (int i = 0; i < 3; i++) {
+        //現在のブロックパターンのオフセット値を取得
+        int ofsX = PtnOffsets[PtnNo][i][0];
+        int ofsY = PtnOffsets[PtnNo][i][1];
+        //回転数に応じて９０度ずつ回転させる
+        for (int j = 0; j < r; j++) {
+            int w = ofsX;
+            ofsX = -ofsY;
+            ofsY = w;
+        }
+        //位置決定
+        Px[i + 1] = X + ofsX;
+        Py[i + 1] = Y + ofsY;
+    }
+}
+void setPtnNoToStage() {
+    setPtnPosition();
+    for (int i = 0; i < 4; i++) {
+        int x = Px[i];
+        int y = Py[i];
+        Stage[y][x] = PtnNo;
+    }
+}
+void delPtnNoFromStage() {
+    for (int i = 0; i < 4; i++) {
+        int x = Px[i];
+        int y = Py[i];
+        Stage[y][x] = BACK;
+    }
+}
+int collision() {
+    setPtnPosition();
+    int flag = 0;
+    for (int i = 0; i < 4; i++) {
+        int x = Px[i];
+        int y = Py[i];
+        if (Stage[y][x] != BACK) {
+            flag = 1;
+        }
+    }
+    return flag;
+}
+void complete() {
+    for (int y = 1; y < ROWS - 1; y++) {
+        int flag = 1;
+        for (int x = 1; x < COLS - 1; x++) {
+            if (Stage[y][x] == BACK) {
+                flag = 0;
+            }
+        }
+        if (flag) {
+
+            //そろったのでスライド
+            for (int upy = y - 1; upy >= 0; upy--) {
+                for (int x = 1; x < COLS - 1; x++) {
+                    Stage[upy + 1][x] = Stage[upy][x];
+                }
+            }
+            Score += 10;
+        }
+    }
+}
+void play() {
+    //現在のパターン番号（色番号）をステージから消す
+    delPtnNoFromStage();
+    //移動、回転
+    int dy = 0, dx = 0, dr = 0;;
+    if ((++LoopCnt %= 15) == 0)dy = 1;
+    if (isTrigger(KEY_D))dx = 1;
+    if (isTrigger(KEY_A))dx = -1;
+    if (isTrigger(KEY_W))dr = 1;
+    if (isTrigger(KEY_S))FallFlag = 1;
+    if (FallFlag)dy = 1;
+    Y += dy;
+    X += dx;
+    R += dr;
+    if (collision()) {
+        //元の位置、回転に戻す
+        Y -= dy;
+        X -= dx;
+        R -= dr;
+        FallFlag = 0;
+        if (dy == 1 && dx == 0 && dr == 0) {
+            //積もらせる
+            setPtnNoToStage();
+            //行がそろっていたらスライドさせる
+            complete();
+            //新しいブロック誕生
+            X = 5;
+            Y = 1;
+            R = 0;
+            PtnNo = random() % 7;
+            if (collision()) {
+                GameState = OVER;
+            }
+        }
+    }
+    //パターン番号（色番号）をステージにセット
+    setPtnNoToStage();
+
+    //描画
+    clear(0);
+    drawStage();
+    fill(0, 0, 255);
+    textSize(Size);
+    text("スコア", Size * 2, Size);
+    text(Score, Size * 2, Size * 2);
+}
+
+void over() {
+    clear(0);
+    drawStage();
+    //ゲームオーバーテキスト
+    fill(0, 0, 255);
+    textSize(Size);
+    text("ＧａｍｅＯｖｅｒ", (width - Size * 8) / 2, Size);
+    if (isTrigger(KEY_SPACE)) {
+        GameState = INIT;
+    }
+}
+
+void gmain() {
+    window(Size * COLS, Size * ROWS);
+    while (notQuit) {
+        if      (GameState == INIT)init();
+        else if (GameState == PLAY)play();
+        else if (GameState == OVER)over();
+    }
+}
+
+
+#endif
+
+#ifdef _SAMPLE1
+#include"libOne.h"
+//外部変数------------------------------------------------------------
+//シーケンス
+const int INIT = 0;
+const int PLAY = 1;
+const int OVER = 2;
+int GameState = INIT;
+//色データ
+float Satu = 200;
+float Value = 255;
+float Alpha = 255;
+struct COLOR Color[9] = {
+    COLOR(0,Satu,Value,Alpha),
+    COLOR(30,Satu,Value,Alpha),
+    COLOR(60,Satu,Value,Alpha),
+    COLOR(120,Satu,Value,Alpha),
+    COLOR(180,Satu,Value,Alpha),
+    COLOR(220,Satu,Value,Alpha),
+    COLOR(300,Satu,Value,Alpha),
+    COLOR(200,44,88,Alpha),
+    COLOR(0,0,20,Alpha),
+};
+//壁と背景の色番号
+const int WALL = 7;
+const int BACK = 8;
+//ステージ（色番号を記憶する）
+const int ROWS = 20;
+const int COLS = 12;
+int Stage[ROWS][COLS];
+float Size = 50;
+//ブロックの回転数
+int R;
+//ブロックパターンの位置（基準は[0]）
+int Px[4], Py[4];
+//ブロック移動制御
+int FallFlag = 0;
+int LoopCnt = 0;
+//ブロックパターン番号  ※ 兼色番号 ※
+int PtnNo;
+//ブロックパターンオフセット値(基準[0]からずらす値)
+int PtnOffsets[7][3][2] = {
+    //■□■■...0
+    {{-1,0}, {1,0}, {2,0}},
+    //■
+    //■□■....1
+    {{-1,-1},{-1,0},{1,0}},
+    //  　■
+    //■□■....2
+    {{-1,0}, {1,0}, {1,-1}},
+    //■□
+    //　■■....3
+    {{-1,0}, {0,1}, {1,1}},
+    //　□■
+    //■■  ....4
+    {{ 1,0}, {0,1}, {-1,1}},
+     //　■
+     //■□■....5
+    {{-1,0}, {0,-1}, {1,0}},
+     //□■
+     //■■......6
+    {{1,0},  {0,1},  {1,1}},
+};
+
+//関数----------------------------------------------------------------
+void init() {
+    //壁と背景の色番号をStage 2次元配列 にセット
+    for (int y = 0; y < ROWS; y++) {
+        Stage[y][0] = Stage[y][COLS - 1] = WALL;
+        for (int x = 1; x < COLS - 1; x++) {
+            Stage[y][x] = BACK;
+            if (y == ROWS - 1) {
+                Stage[y][x] = WALL;
+            }
+        }
+    }
+    //ブロック初期位置（開始時は４つとも同じでよい）
+    for (int i = 0; i < 4; i++) {
+        Px[i] = 5;
+        Py[i] = 1;
+    }
+    R = 0;
+    PtnNo = random() % 7;
+    //次のシーケンス
+    GameState = PLAY;
+}
+
+void drawStage() {
+    angleMode(DEGREES);
+    colorMode(HSV);
+    strokeWeight(20);
+    rectMode(CENTER);
+    float px, py, halfSize = Size / 2;
+    for (int y = 0; y < ROWS; y++) {
+        for (int x = 0; x < COLS; x++) {
+            //Stage配列の番号に従った色のrectを描画する
+            int no = Stage[y][x];
+            stroke(Color[no]);
+            fill(0, 0, 180);
+            px = halfSize + Size * x;
+            py = halfSize + Size * y;
+            rect(px, py, halfSize, halfSize);
+        }
+    }
+}
+void setPtnPosition() {
+    //回転数
+    int r = R % 4;
+    for (int i = 0; i < 3; i++) {
+        //現在のブロックパターンのオフセット値を取得
+        int ofsX = PtnOffsets[PtnNo][i][0];
+        int ofsY = PtnOffsets[PtnNo][i][1];
+        //回転数に応じて９０度ずつ回転させる
+        for (int j = 0; j < r && PtnNo != 6; j++) {
+            int w = ofsX;
+            ofsX = -ofsY;
+            ofsY = w;
+        }
+        //位置決定
+        Px[i + 1] = Px[0] + ofsX;
+        Py[i + 1] = Py[0] + ofsY;
+    }
+}
+void delPtnNoFromStage() {
+    for (int i = 0; i < 4; i++) {
+        int x = Px[i];
+        int y = Py[i];
+        Stage[y][x] = BACK;
+    }
+}
+void setPtnNoToStage() {
+    setPtnPosition();
+    for (int i = 0; i < 4; i++) {
+        int x = Px[i];
+        int y = Py[i];
+        Stage[y][x] = PtnNo;
+    }
+}
+int collision() {
+    //仮の位置を決める
+    setPtnPosition();
+    //当たっているかチェック
+    int flag = 0;
+    for (int i = 0; i < 4; i++) {
+        int x = Px[i];
+        int y = Py[i];
+        if (Stage[y][x] != BACK) {
+            flag = 1;
+        }
+    }
+    return flag;
+}
+void complete() {
+    for (int y = 1; y < ROWS - 1; y++) {
+        //y行がそろったかチェック
+        int flag = 1;
+        for (int x = 1; x < COLS - 1; x++) {
+            if (Stage[y][x] == BACK) {
+                flag = 0;
+            }
+        }
+        if (flag) {
+            //そろったのでスライド
+            for (int upy = y - 1; upy >= 0; upy--) {
+                for (int x = 1; x < COLS - 1; x++) {
+                    Stage[upy + 1][x] = Stage[upy][x];
+                }
+            }
+        }
+    }
+}
+void play() {
+    //現在のパターン番号（色番号）をステージから消す
+    delPtnNoFromStage();
+    //移動、回転
+    int dy = 0, dx = 0, dr = 0;;
+    if ((++LoopCnt %= 15) == 0)dy = 1;
+    if (isTrigger(KEY_D))dx = 1;
+    if (isTrigger(KEY_A))dx = -1;
+    if (isTrigger(KEY_W))dr = 1;
+    if (isTrigger(KEY_S))FallFlag = 1;
+    if (FallFlag)dy = 1;
+    Px[0] += dx;
+    Py[0] += dy;
+    R += dr;
+    if (collision()) {
+        //元の位置、回転に戻す
+        Px[0] -= dx;
+        Py[0] -= dy;
+        R -= dr;
+        FallFlag = 0;
+        if (dy == 1 && dx == 0 && dr == 0) {
+            //積もらせる
+            setPtnNoToStage();
+            //行がそろっていたらスライドさせる
+            complete();
+            //新しいブロック誕生
+            Px[0] = 5;
+            Py[0] = 1;
+            R = 0;
+            PtnNo = random() % 7;
+            if (collision()) {
+                GameState = OVER;
+            }
+        }
+    }
+    //パターン番号（色番号）をステージにセット
+    setPtnNoToStage();
+
+    //描画
+    clear(0);
+    drawStage();
+}
+
+void over() {
+    clear(0);
+    drawStage();
+    //ゲームオーバーテキスト
+    for (int x = 1; x < COLS - 1; x++)Stage[0][x] = BACK;
+    fill(0, 0, 255);
+    textSize(Size);
+    text("ＧａｍｅＯｖｅｒ", (width - Size * 8) / 2, Size);
+    if (isTrigger(KEY_SPACE)) {
+        GameState = INIT;
+    }
+}
+
+void gmain() {
+    window(Size * COLS, Size * ROWS, full);
+    ShowCursor(false);
+    while (notQuit) {
+        if (GameState == INIT)init();
+        else if (GameState == PLAY)play();
+        else if (GameState == OVER)over();
+    }
+    ShowCursor(true);
+}
+#endif
